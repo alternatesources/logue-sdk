@@ -33,72 +33,129 @@
 //*/
 
 /*
- *  File: effect.h
- *
- *  Dummy generic effect template instance.
+ *  filter gate - Trance-Gate like filter effect with equal-power LP/BP/HP morphing,
+ *  and log-scaled cutoff frequency.
  *
  */
 #include "processor.h"
 #include "unit_genericfx.h"
+#include "third_party/SvfLinearTrapOptimised2.hpp"
+#include <cmath>
+#include <algorithm>
+
+namespace {
+  /**
+   * Calculates the one-pole smoothing coefficient.
+   * @param fade_time_ms Fade time in milliseconds.
+   * @param sr_reciprocal Sample rate reciprocal (1.0 / sample_rate) in seconds.
+   * @return The smoothing coefficient alpha in range [0, 1].
+   */
+  float calculate_alpha(float fade_time_ms, float sr_reciprocal) {
+    // Avoid division by zero
+    if (fade_time_ms <= 0.0f) {
+      return 1.0f;  // Instant transition
+    }
+
+    // Time constant in seconds
+    float tau = fade_time_ms / 1000.0f;
+
+    // Calculate coefficient: alpha = 1 - exp(-T / tau)
+    // Where T = sr_reciprocal
+    return 1.0f - expf(-sr_reciprocal / tau);
+  }
+
+  const float time_div_multipliers[9] = {
+      1.f / 8.f,  // 1/2
+      1.f / 6.f,  // 1/4d
+      1.f / 4.f,  // 1/4
+      1.f / 3.f,  // 1/8d
+      1.f / 2.f,  // 1/8
+      2.f / 3.f,  // 1/16d
+      1.f,        // 1/16
+      4.f / 3.f,  // 1/32d
+      2.f         // 1/32
+  };
+}  // namespace
 
 class Effect : public Processor {
  public:
-  uint32_t getBufferSize() const override final { return 0x40000U; }  // 1 MB
+  uint32_t getBufferSize() const override final { return 0U; }  // No SDRAM buffer needed
 
   // audio parameters
   enum {
-    PARAM1 = 0U,
-    PARAM2,
-    DEPTH,
-    PARAM4,
+    PARAM_TIME = 0U,
+    PARAM_CUTOFF,
+    PARAM_RESO,
+    PARAM_TYPE,
+    PARAM_GAIN,
+    PARAM_SMOOTH,
+    PARAM_GATE,
+    PARAM_DEPTH,
     NUM_PARAMS
   };
 
-  // Note: Make sure that default param values correspond to declarations in header.c
   struct Params {
-    float param1;
-    float param2;
-    float depth;
-    uint32_t param4;
+    int32_t time_div;       // 0-9
+    int32_t gate;           // 0-100
+    float cutoff_hz;        // 20Hz - 20kHz
+    float q;                // 0.50 - 300.00
+    int32_t type;           // 0-1000
+    float gain_coef;        // cubed gain multiplier
+    float smoothing_alpha;  // smoothing coefficient alpha [0, 1]
+    float depth;            // -100 to 100
 
-    void reset() {
-      param1 = 0.f;
-      param2 = 0.f;
-      depth = 0.f;
-      param4 = 1;
+    void reset(float sr_reciprocal = 1.f / 48000.f) {
+      time_div = 6;                                            // 1/16 note
+      gate = 50;                                               // 50% duty cycle
+      cutoff_hz = 20000.f;                                     // Default to 20kHz
+      q = 50.f / 100.f;                                        // Q = 0.50
+      type = 0;                                                // LP
+      gain_coef = 1.f;                                         // unity
+      smoothing_alpha = calculate_alpha(2.0f, sr_reciprocal);  // Default 2.0 ms
+      depth = 100.f;                                           // fully wet
     }
 
     Params() { reset(); }
   };
 
-  enum {
-    PARAM4_VALUE0 = 0,
-    PARAM4_VALUE1,
-    PARAM4_VALUE2,
-    PARAM4_VALUE3,
-    NUM_PARAM4_VALUES,
-  };
+  Effect() {}
 
   inline void setParameter(uint8_t index, int32_t value) override final {
     switch (index) {
-      case PARAM1:
-        // 10bit 0-1023 parameter
-        params_.param1 = param_10bit_to_f32(value);  // 0 .. 1023 -> 0.0 .. 1.0
+      case PARAM_TIME:
+        params_.time_div = std::max(0, std::min(17, (int)value));
         break;
 
-      case PARAM2:
-        // 10bit 0-1023 parameter
-        params_.param2 = param_10bit_to_f32(value);  // 0 .. 1023 -> 0.0 .. 1.0
+      case PARAM_GATE:
+        params_.gate = std::max(0, std::min(100, (int)value));
         break;
 
-      case DEPTH:
-        // Single digit base-10 fractional value, bipolar dry/wet
-        params_.depth = value / 1000.f;  // -100.0 .. 100.0 -> -1.0 .. 1.0
+      case PARAM_CUTOFF:
+        params_.cutoff_hz = (float)value;
+        updateFilterCoefficients();
         break;
 
-      case PARAM4:
-        // strings type parameter, receiving index value
-        params_.param4 = value;
+      case PARAM_RESO:
+        params_.q = std::max(50, std::min(30000, (int)value)) / 100.f;
+        updateFilterCoefficients();
+        break;
+
+      case PARAM_TYPE:
+        params_.type = std::max(0, std::min(1000, (int)value));
+        break;
+
+      case PARAM_GAIN: {
+        float gain_raw = std::max(0, std::min(1000, (int)value)) / 1000.f;
+        params_.gain_coef = gain_raw * gain_raw * gain_raw;
+      } break;
+
+      case PARAM_SMOOTH: {
+        float fade_time_ms = std::max(0, std::min(500, (int)value)) / 10.f;  // value 0-500 represents 0.0-50.0 ms
+        params_.smoothing_alpha = calculate_alpha(fade_time_ms, sample_rate_reciprocal);
+      } break;
+
+      case PARAM_DEPTH:
+        params_.depth = std::max(-100, std::min(100, (int)value));
         break;
 
       default:
@@ -107,22 +164,54 @@ class Effect : public Processor {
   }
 
   inline const char * getParameterStrValue(uint8_t index, int32_t value) const override final {
-    // Note: String memory must be accessible even after function returned.
-    //       It can be assumed that caller will have copied or used the string
-    //       before the next call to getParameterStrValue
-
-    static const char * param4_strings[NUM_PARAM4_VALUES] = {
-        "VAL 0",
-        "VAL 1",
-        "VAL 2",
-        "VAL 3",
-    };
-
     switch (index) {
-      case PARAM4:
-        if (value >= PARAM4_VALUE0 && value < NUM_PARAM4_VALUES)
-          return param4_strings[value];
+      case PARAM_TIME:
+        switch (value) {
+          case 0:
+            return "1/2";
+          case 1:
+            return "1/4d";
+          case 2:
+            return "1/4";
+          case 3:
+            return "1/8d";
+          case 4:
+            return "1/8";
+          case 5:
+            return "1/16d";
+          case 6:
+            return "1/16";
+          case 7:
+            return "1/32d";
+          case 8:
+            return "1/32";
+          case 9:
+            return "1/2free";
+          case 10:
+            return "1/4dfree";
+          case 11:
+            return "1/4free";
+          case 12:
+            return "1/8dfree";
+          case 13:
+            return "1/8free";
+          case 14:
+            return "1/16dfree";
+          case 15:
+            return "1/16free";
+          case 16:
+            return "1/32dfree";
+          case 17:
+            return "1/32free";
+          default:
+            break;
+        }
         break;
+
+      case PARAM_GATE:
+        // k_unit_param_type_percent is handled by the OS
+        return nullptr;
+
       default:
         break;
     }
@@ -132,50 +221,225 @@ class Effect : public Processor {
 
   // life-cycle methods
   void init(float * allocated_buffer) override final {
-    buffer_ = allocated_buffer;
-    params_.reset();
+    (void)allocated_buffer;
+
+    sample_rate_reciprocal = 1.f / getSampleRate();
+    current_tempo_bpm = 120.f;
+
+    current_tick_counter = 0;
+    samples_since_last_tick = 0;
+    samples_per_tick = getSampleRate() * (15.f / 120.f);
+    is_touching = false;
+    touch_tick_counter = 0;
+    touch_fraction = 0.f;
+
+    currentMixL = 0.f;
+    currentMixR = 0.f;
+
+    params_.reset(sample_rate_reciprocal);
+    updateFilterCoefficients();
+
+    flt_l.resetState();
+    flt_r.resetState();
   }
 
-  void teardown() override final { buffer_ = nullptr; }
+  void teardown() override final {}
+
+  void reset() override final {
+    current_tick_counter = 0;
+    samples_since_last_tick = 0;
+    is_touching = false;
+    touch_tick_counter = 0;
+    touch_fraction = 0.f;
+
+    currentMixL = 0.f;
+    currentMixR = 0.f;
+
+    flt_l.resetState();
+    flt_r.resetState();
+  }
+
+  void setTempo(float bpm) override final {
+    if (bpm > 0.f) {
+      current_tempo_bpm = bpm;
+      samples_per_tick = getSampleRate() * (15.f / bpm);
+    }
+  }
 
   // audio processing callbacks
   void process(const float * __restrict in, float * __restrict out, uint32_t frames) override final {
-    // Caching current parameter values. Consider smoothing sensitive parameters in audio loop
-    const Params p = params_;
+    const int32_t time_div_idx = params_.time_div % 9;
+    const float time_division_mult = time_div_multipliers[time_div_idx];
+
+    const float smoothing_alpha = params_.smoothing_alpha;
+    const float depth_mix_target = std::abs(params_.depth) / 100.f;
+    const float gain_coef = params_.gain_coef;
+    const int32_t type = params_.type;
+    const int32_t gate = params_.gate;
+
+    float morph_gain_low = 0.f;
+    float morph_gain_band = 0.f;
+    float morph_gain_high = 0.f;
+
+    if (type > 0 && type < 500) {
+      float mix_val = type / 500.f;
+      morph_gain_low = std::sqrt(1.f - mix_val);
+      morph_gain_band = std::sqrt(mix_val);
+    } else if (type > 500 && type < 1000) {
+      float mix_val = (type - 500.f) / 500.f;
+      morph_gain_band = std::sqrt(1.f - mix_val);
+      morph_gain_high = std::sqrt(mix_val);
+    }
+
+    float ap_mix = 1.f;
+    float raw_mix = 0.f;
+    if (params_.cutoff_hz >= 5000.f) {
+      ap_mix = 0.f;
+      raw_mix = 1.f;
+    } else if (params_.cutoff_hz > 2000.f) {
+      float t = (params_.cutoff_hz - 2000.f) / 3000.f;
+      raw_mix = t;
+      ap_mix = 1.f - t;
+    }
 
     for (const float * out_end = out + frames * 2; out != out_end; in += 2, out += 2) {
-      // Process samples here
-      out[0] = in[0];
-      out[1] = in[1];
+      const float in_l = in[0];
+      const float in_r = in[1];
+
+      bool target_state = false;
+
+      samples_since_last_tick++;
+
+      uint32_t tick_diff = 0;
+      float frac_diff = samples_since_last_tick / samples_per_tick;
+
+      if (params_.time_div >= 9) {
+        // Free Mode: Offset from touch start
+        tick_diff = current_tick_counter - touch_tick_counter;
+        frac_diff -= touch_fraction;
+      } else {
+        // Tempo-Synced Mode: Absolute position
+        tick_diff = current_tick_counter % 24;
+      }
+
+      float relative_pos = (float)tick_diff + frac_diff;
+      if (relative_pos < 0.f) relative_pos = 0.f;  // safeguard against float inaccuracy
+
+      float phase = relative_pos * time_division_mult;
+      phase = phase - (uint32_t)phase;
+
+      float gate_fraction = gate / 100.f;
+      bool is_active_phase = (params_.depth >= 0.f) ? (phase >= (1.0f - gate_fraction)) : (phase < gate_fraction);
+
+      target_state = is_touching && is_active_phase;
+
+      // 4. Target and Current Mix
+      float targetMixL = target_state ? depth_mix_target : 0.f;
+      currentMixL += smoothing_alpha * (targetMixL - currentMixL);
+      if (currentMixL < 0.f) currentMixL = 0.f;
+      if (currentMixL > 1.f) currentMixL = 1.f;
+
+      float targetMixR = target_state ? depth_mix_target : 0.f;
+      currentMixR += smoothing_alpha * (targetMixR - currentMixR);
+      if (currentMixR < 0.f) currentMixR = 0.f;
+      if (currentMixR > 1.f) currentMixR = 1.f;
+
+      // 5. Run filters
+      float lp_l, bp_l, hp_l, ap_l;
+      float lp_r, bp_r, hp_r, ap_r;
+
+      flt_l.tick_multimode(in_l, lp_l, bp_l, hp_l, ap_l);
+      flt_r.tick_multimode(in_r, lp_r, bp_r, hp_r, ap_r);
+
+      // 6. Compute audible filter result
+      float audible_l = 0.f;
+      float audible_r = 0.f;
+
+      if (type == 0) {
+        audible_l = lp_l;
+        audible_r = lp_r;
+      } else if (type < 500) {
+        audible_l = morph_gain_low * lp_l + morph_gain_band * bp_l;
+        audible_r = morph_gain_low * lp_r + morph_gain_band * bp_r;
+      } else if (type == 500) {
+        audible_l = bp_l;
+        audible_r = bp_r;
+      } else if (type < 1000) {
+        audible_l = morph_gain_band * bp_l + morph_gain_high * hp_l;
+        audible_r = morph_gain_band * bp_r + morph_gain_high * hp_r;
+      } else {
+        audible_l = hp_l;
+        audible_r = hp_r;
+      }
+
+      // Apply cubed gain to audible filter signal
+      audible_l *= gain_coef;
+      audible_r *= gain_coef;
+
+      // 7. Compute dry signal (mix of raw input and all-pass)
+      float dry_l = ap_mix * ap_l + raw_mix * in_l;
+      float dry_r = ap_mix * ap_r + raw_mix * in_r;
+
+      // 8. Crossfade dry and wet (audible filter)
+      float gain_dry_l = std::sqrt(1.f - currentMixL);
+      float gain_wet_l = std::sqrt(currentMixL);
+
+      float gain_dry_r = std::sqrt(1.f - currentMixR);
+      float gain_wet_r = std::sqrt(currentMixR);
+
+      out[0] = gain_dry_l * dry_l + gain_wet_l * audible_l;
+      out[1] = gain_dry_r * dry_r + gain_wet_r * audible_r;
     }
   }
 
   inline void touchEvent(uint8_t id, uint8_t phase, uint32_t x, uint32_t y) override final {
-    // Note: Touch x/y events are already mapped to specific parameters so there is usually there no need to set parameters from here.
-    //       Audio source type effects, for instance, may require these events to trigger enveloppes and such.
-
     (void)id;
-    (void)phase;
     (void)x;
     (void)y;
 
-    // switch (phase) {
-    // case k_unit_touch_phase_began:
-    //   break;
-    // case k_unit_touch_phase_moved:
-    //   break;
-    // case k_unit_touch_phase_ended:
-    //   break;
-    // case k_unit_touch_phase_stationary:
-    //   break;
-    // case k_unit_touch_phase_cancelled:
-    //   break;
-    // default:
-    //   break;
-    // }
+    if (phase == k_unit_touch_phase_began) {
+      is_touching = true;
+      if (params_.time_div >= 9) {
+        touch_tick_counter = current_tick_counter;
+        touch_fraction = samples_since_last_tick / samples_per_tick;
+      }
+    } else if (phase == k_unit_touch_phase_ended) {
+      is_touching = false;
+    }
+  }
+
+  inline void tempo4ppqnTick(uint32_t counter) override final {
+    if (params_.time_div < 9) {
+      current_tick_counter = counter;
+      samples_since_last_tick = 0;
+    }
   }
 
  private:
-  float * buffer_;  // valid range:  [buffer_, buffer_ + getBufferSize())
+  void updateFilterCoefficients() {
+    // Note: We always pass LOW_PASS_FILTER here because tick_multimode() derives
+    // LP/BP/HP/AP outputs directly from the internal SVF state variables,
+    // ignoring the specific filter type mix coefficients set by updateCoefficients().
+    flt_l.updateCoefficients(params_.cutoff_hz, params_.q, SvfLinearTrapOptimised2::LOW_PASS_FILTER, getSampleRate());
+    flt_r.updateCoefficients(params_.cutoff_hz, params_.q, SvfLinearTrapOptimised2::LOW_PASS_FILTER, getSampleRate());
+  }
+
+  SvfLinearTrapOptimised2 flt_l;
+  SvfLinearTrapOptimised2 flt_r;
+
+  float sample_rate_reciprocal;
+  float current_tempo_bpm;
+
+  uint32_t current_tick_counter;
+  int32_t samples_since_last_tick;
+  float samples_per_tick;
+  bool is_touching;
+
+  uint32_t touch_tick_counter;
+  float touch_fraction;
+
+  float currentMixL;
+  float currentMixR;
+
   Params params_;
 };
