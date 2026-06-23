@@ -38,18 +38,17 @@
  *
  */
 #include "effect.h"
-#include "unit_genericfx.h" // base definitions for delfx units
-#include "utils/int_math.h" // clipminmaxi32()
-#include <algorithm>        // std::fill
+#include "unit_genericfx.h"  // base definitions for delfx units
+#include "utils/int_math.h"  // clipminmaxi32()
+#include <algorithm>         // std::fill
 
-static Effect s_effect_instance; // Note: In this example, actual effect instance.
+static Effect s_effect_instance;  // Note: In this example, actual effect instance.
 
-static int32_t cached_values[UNIT_GENERICFX_MAX_PARAM_COUNT]; // cached parameter values passed from hardware
+static int32_t cached_values[UNIT_GENERICFX_MAX_PARAM_COUNT];  // cached parameter values passed from hardware
 
 // ---- Callbacks exposed to runtime ----------------------------------------------
 
-__unit_callback int8_t unit_init(const unit_runtime_desc_t *desc)
-{
+__unit_callback int8_t unit_init(const unit_runtime_desc_t * desc) {
   if (!desc)
     return k_unit_err_undef;
 
@@ -66,64 +65,54 @@ __unit_callback int8_t unit_init(const unit_runtime_desc_t *desc)
     return k_unit_err_samplerate;
 
   // Check compatibility of frame geometry
-  if (desc->input_channels != 2 || desc->output_channels != 2) // should be stereo input/output
+  if (desc->input_channels != 2 || desc->output_channels != 2)  // should be stereo input/output
     return k_unit_err_geometry;
 
   // If SDRAM buffers are required they must be allocated here
   if (!desc->hooks.sdram_alloc)
     return k_unit_err_memory;
 
-  if (s_effect_instance.getBufferSize() > 0)
-  {
-    float *allocated_buffer_ = (float *)desc->hooks.sdram_alloc(s_effect_instance.getBufferSize() * sizeof(float));
+  if (s_effect_instance.getBufferSize() > 0) {
+    float * allocated_buffer_ = (float *)desc->hooks.sdram_alloc(s_effect_instance.getBufferSize() * sizeof(float));
     if (!allocated_buffer_)
       return k_unit_err_memory;
 
     // clear buffer
     std::fill(allocated_buffer_, allocated_buffer_ + s_effect_instance.getBufferSize(), 0.f);
     s_effect_instance.init(allocated_buffer_);
-  }
-  else
-  {
+  } else {
     s_effect_instance.init(nullptr);
   }
 
   // initialize cached parameters to defaults
-  for (int id = 0; id < UNIT_GENERICFX_MAX_PARAM_COUNT; ++id)
-  {
+  for (int id = 0; id < UNIT_GENERICFX_MAX_PARAM_COUNT; ++id) {
     cached_values[id] = static_cast<int32_t>(unit_header.common.params[id].init);
   }
 
   return k_unit_err_none;
 }
 
-__unit_callback void unit_teardown()
-{
+__unit_callback void unit_teardown() {
   s_effect_instance.teardown();
 }
 
-__unit_callback void unit_reset()
-{
+__unit_callback void unit_reset() {
   s_effect_instance.reset();
 }
 
-__unit_callback void unit_resume()
-{
+__unit_callback void unit_resume() {
   s_effect_instance.resume();
 }
 
-__unit_callback void unit_suspend()
-{
+__unit_callback void unit_suspend() {
   s_effect_instance.suspend();
 }
 
-__unit_callback void unit_render(const float *in, float *out, uint32_t frames)
-{
+__unit_callback void unit_render(const float * in, float * out, uint32_t frames) {
   s_effect_instance.process(in, out, frames);
 }
 
-__unit_callback void unit_set_param_value(uint8_t id, int32_t value)
-{
+__unit_callback void unit_set_param_value(uint8_t id, int32_t value) {
   // clip to valid range as defined in header
   value = clipminmaxi32(unit_header.common.params[id].min, value, unit_header.common.params[id].max);
 
@@ -133,30 +122,25 @@ __unit_callback void unit_set_param_value(uint8_t id, int32_t value)
   s_effect_instance.setParameter(id, value);
 }
 
-__unit_callback int32_t unit_get_param_value(uint8_t id)
-{
+__unit_callback int32_t unit_get_param_value(uint8_t id) {
   // just return the cached value
   return cached_values[id];
 }
 
-__unit_callback const char *unit_get_param_str_value(uint8_t id, int32_t value)
-{
-  value = clipminmaxi32(unit_header.common.params[id].min, value, unit_header.common.params[id].max); // just in case
+__unit_callback const char * unit_get_param_str_value(uint8_t id, int32_t value) {
+  value = clipminmaxi32(unit_header.common.params[id].min, value, unit_header.common.params[id].max);  // just in case
   return s_effect_instance.getParameterStrValue(id, value);
 }
 
-__unit_callback void unit_touch_event(uint8_t id, uint8_t phase, uint32_t x, uint32_t y)
-{
+__unit_callback void unit_touch_event(uint8_t id, uint8_t phase, uint32_t x, uint32_t y) {
   s_effect_instance.touchEvent(id, phase, x, y);
 }
 
-__unit_callback void unit_set_tempo(uint32_t tempo)
-{
+__unit_callback void unit_set_tempo(uint32_t tempo) {
   float bpm = (tempo >> 16) + (tempo & 0xFFFF) / static_cast<float>(0x10000);
   s_effect_instance.setTempo(bpm);
 }
 
-__unit_callback void unit_tempo_4ppqn_tick(uint32_t counter)
-{
+__unit_callback void unit_tempo_4ppqn_tick(uint32_t counter) {
   s_effect_instance.tempo4ppqnTick(counter);
 }

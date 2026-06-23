@@ -9,28 +9,28 @@ PROJECT_TYPE := genericfx
 # Sources
 #
 
-# C sources 
+# C sources
 UCSRC = header.c
 
-# C++ sources 
+# C++ sources
 UCXXSRC = unit.cc
 
 # List ASM source files here
-UASMSRC = 
+UASMSRC =
 
-UASMXSRC = 
+UASMXSRC =
 
 ##############################################################################
 # Include Paths
 #
 
-UINCDIR  = 
+UINCDIR  =
 
 ##############################################################################
 # Library Paths
 #
 
-ULIBDIR = 
+ULIBDIR =
 
 ##############################################################################
 # Libraries
@@ -42,5 +42,4 @@ ULIBS  = -lm
 # Macros
 #
 
-UDEFS = 
-
+UDEFS =

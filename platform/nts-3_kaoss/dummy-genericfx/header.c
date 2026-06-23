@@ -38,62 +38,59 @@
  *
  */
 
-#include "unit_genericfx.h"   // Note: Include base definitions for genericfx units
+#include "unit_genericfx.h"  // Note: Include base definitions for genericfx units
 
 // ---- Unit header definition  --------------------------------------------------------------------
 
 const __unit_header genericfx_unit_header_t unit_header = {
-  .common = {
-    .header_size = sizeof(genericfx_unit_header_t),           // Size of this header. Leave as is.
-    .target = UNIT_TARGET_PLATFORM | k_unit_module_genericfx, // Target platform and module pair for this unit
-    .api = UNIT_API_VERSION,                                  // API version for which unit was built. See runtime.h
-    .dev_id = 0x0,                                            // Developer ID. See https://github.com/korginc/logue-sdk/blob/master/developer_ids.md
-    .unit_id = 0x0U,                                          // ID for this unit. Scoped within the context of a given dev_id.
-    .version = 0x00010000U,                                   // This unit's version: major.minor.patch (major<<16 minor<<8 patch).
-    .name = "dummy",                                          // Name for this unit, will be displayed on device
-    .num_params = 4,                                          // Number of valid parameter descriptors. (max. 8)
-    
-    .params = {
-      // Format: min, max, center (unused), default, type, frac. bits, frac. mode, <reserved>, name
-      
-      // See common/runtime.h for type enum and unit_param_t structure
+    .common = {
+        .header_size = sizeof(genericfx_unit_header_t),            // Size of this header. Leave as is.
+        .target = UNIT_TARGET_PLATFORM | k_unit_module_genericfx,  // Target platform and module pair for this unit
+        .api = UNIT_API_VERSION,                                   // API version for which unit was built. See runtime.h
+        .dev_id = 0x0,                                             // Developer ID. See https://github.com/korginc/logue-sdk/blob/master/developer_ids.md
+        .unit_id = 0x0U,                                           // ID for this unit. Scoped within the context of a given dev_id.
+        .version = 0x00010000U,                                    // This unit's version: major.minor.patch (major<<16 minor<<8 patch).
+        .name = "dummy",                                           // Name for this unit, will be displayed on device
+        .num_params = 4,                                           // Number of valid parameter descriptors. (max. 8)
 
-      // Examples of simple numeric parameters
-      {0, 1023, 0, 0, k_unit_param_type_none, 0, 0, 0, {"PARAM1"}},
-      {0, 1023, 0, 0, k_unit_param_type_none, 0, 0, 0, {"PARAM2"}},
-      
-      // Example of a parameter with negative values and one fractional digit (base 10), using the drywet display type 
-      {-1000, 1000, 0, 0, k_unit_param_type_drywet, 1, 1, 0, {"DEPTH"}},
+        .params = {
+            // Format: min, max, center (unused), default, type, frac. bits, frac. mode, <reserved>, name
 
-      // Example of a strings type parameter
-      {0, 3, 0, 1, k_unit_param_type_strings, 0, 0, 0, {"PARAM4"}},
-      
-      {0, 0, 0, 0, k_unit_param_type_none, 0, 0, 0, {""}},
-      {0, 0, 0, 0, k_unit_param_type_none, 0, 0, 0, {""}},
-      {0, 0, 0, 0, k_unit_param_type_none, 0, 0, 0, {""}},
-      {0, 0, 0, 0, k_unit_param_type_none, 0, 0, 0, {""}}},
-  },
-  .default_mappings = {
-    // By default, the parameters described above will be mapped to controls as described below.
-    // These assignments can be overriden by the user.
-    
-    // Format: assign, curve, curve polarity, min, max, default value
+            // See common/runtime.h for type enum and unit_param_t structure
 
-    // PARAM1 mapped full range to X axis of control pad, initialized at 256
-    {k_genericfx_param_assign_x, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 1023, 256},
+            // Examples of simple numeric parameters
+            {0, 1023, 0, 0, k_unit_param_type_none, 0, 0, 0, {"PARAM1"}},
+            {0, 1023, 0, 0, k_unit_param_type_none, 0, 0, 0, {"PARAM2"}},
 
-    // PARAM2 mapped half range to Y axis of control pad, initialized at 512
-    {k_genericfx_param_assign_y, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 512, 1023, 512},
+            // Example of a parameter with negative values and one fractional digit (base 10), using the drywet display type
+            {-1000, 1000, 0, 0, k_unit_param_type_drywet, 1, 1, 0, {"DEPTH"}},
 
-    // DEPTH mapped full range to depth control, with a bipolar exponential curve and i initialized at 0
-    {k_genericfx_param_assign_depth, k_genericfx_curve_exp, k_genericfx_curve_bipolar, -1000, 1000, 0},
+            // Example of a strings type parameter
+            {0, 3, 0, 1, k_unit_param_type_strings, 0, 0, 0, {"PARAM4"}},
 
-    // PARAM4 set to the fixed value of 1
-    {k_genericfx_param_assign_none, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 3, 1},
-    
-    {k_genericfx_param_assign_none, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 0, 0},
-    {k_genericfx_param_assign_none, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 0, 0},
-    {k_genericfx_param_assign_none, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 0, 0},
-    {k_genericfx_param_assign_none, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 0, 0}
-  }
-};
+            {0, 0, 0, 0, k_unit_param_type_none, 0, 0, 0, {""}},
+            {0, 0, 0, 0, k_unit_param_type_none, 0, 0, 0, {""}},
+            {0, 0, 0, 0, k_unit_param_type_none, 0, 0, 0, {""}},
+            {0, 0, 0, 0, k_unit_param_type_none, 0, 0, 0, {""}}},
+    },
+    .default_mappings = {// By default, the parameters described above will be mapped to controls as described below.
+                         // These assignments can be overriden by the user.
+
+                         // Format: assign, curve, curve polarity, min, max, default value
+
+                         // PARAM1 mapped full range to X axis of control pad, initialized at 256
+                         {k_genericfx_param_assign_x, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 1023, 256},
+
+                         // PARAM2 mapped half range to Y axis of control pad, initialized at 512
+                         {k_genericfx_param_assign_y, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 512, 1023, 512},
+
+                         // DEPTH mapped full range to depth control, with a bipolar exponential curve and i initialized at 0
+                         {k_genericfx_param_assign_depth, k_genericfx_curve_exp, k_genericfx_curve_bipolar, -1000, 1000, 0},
+
+                         // PARAM4 set to the fixed value of 1
+                         {k_genericfx_param_assign_none, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 3, 1},
+
+                         {k_genericfx_param_assign_none, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 0, 0},
+                         {k_genericfx_param_assign_none, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 0, 0},
+                         {k_genericfx_param_assign_none, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 0, 0},
+                         {k_genericfx_param_assign_none, k_genericfx_curve_linear, k_genericfx_curve_unipolar, 0, 0, 0}}};

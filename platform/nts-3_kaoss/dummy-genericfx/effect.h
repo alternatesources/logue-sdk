@@ -41,14 +41,12 @@
 #include "processor.h"
 #include "unit_genericfx.h"
 
-class Effect : public Processor
-{
-public:
-  uint32_t getBufferSize() const override final { return 0x40000U; } // 1 MB
+class Effect : public Processor {
+ public:
+  uint32_t getBufferSize() const override final { return 0x40000U; }  // 1 MB
 
   // audio parameters
-  enum
-  {
+  enum {
     PARAM1 = 0U,
     PARAM2,
     DEPTH,
@@ -57,15 +55,13 @@ public:
   };
 
   // Note: Make sure that default param values correspond to declarations in header.c
-  struct Params
-  {
+  struct Params {
     float param1;
     float param2;
     float depth;
     uint32_t param4;
 
-    void reset()
-    {
+    void reset() {
       param1 = 0.f;
       param2 = 0.f;
       depth = 0.f;
@@ -75,8 +71,7 @@ public:
     Params() { reset(); }
   };
 
-  enum
-  {
+  enum {
     PARAM4_VALUE0 = 0,
     PARAM4_VALUE1,
     PARAM4_VALUE2,
@@ -84,64 +79,59 @@ public:
     NUM_PARAM4_VALUES,
   };
 
-  inline void setParameter(uint8_t index, int32_t value) override final
-  {
-    switch (index)
-    {
-    case PARAM1:
-      // 10bit 0-1023 parameter
-      params_.param1 = param_10bit_to_f32(value); // 0 .. 1023 -> 0.0 .. 1.0
-      break;
+  inline void setParameter(uint8_t index, int32_t value) override final {
+    switch (index) {
+      case PARAM1:
+        // 10bit 0-1023 parameter
+        params_.param1 = param_10bit_to_f32(value);  // 0 .. 1023 -> 0.0 .. 1.0
+        break;
 
-    case PARAM2:
-      // 10bit 0-1023 parameter
-      params_.param2 = param_10bit_to_f32(value); // 0 .. 1023 -> 0.0 .. 1.0
-      break;
+      case PARAM2:
+        // 10bit 0-1023 parameter
+        params_.param2 = param_10bit_to_f32(value);  // 0 .. 1023 -> 0.0 .. 1.0
+        break;
 
-    case DEPTH:
-      // Single digit base-10 fractional value, bipolar dry/wet
-      params_.depth = value / 1000.f; // -100.0 .. 100.0 -> -1.0 .. 1.0
-      break;
+      case DEPTH:
+        // Single digit base-10 fractional value, bipolar dry/wet
+        params_.depth = value / 1000.f;  // -100.0 .. 100.0 -> -1.0 .. 1.0
+        break;
 
-    case PARAM4:
-      // strings type parameter, receiving index value
-      params_.param4 = value;
-      break;
+      case PARAM4:
+        // strings type parameter, receiving index value
+        params_.param4 = value;
+        break;
 
-    default:
-      break;
+      default:
+        break;
     }
   }
 
-  inline const char *getParameterStrValue(uint8_t index, int32_t value) const override final
-  {
+  inline const char * getParameterStrValue(uint8_t index, int32_t value) const override final {
     // Note: String memory must be accessible even after function returned.
     //       It can be assumed that caller will have copied or used the string
     //       before the next call to getParameterStrValue
 
-    static const char *param4_strings[NUM_PARAM4_VALUES] = {
+    static const char * param4_strings[NUM_PARAM4_VALUES] = {
         "VAL 0",
         "VAL 1",
         "VAL 2",
         "VAL 3",
     };
 
-    switch (index)
-    {
-    case PARAM4:
-      if (value >= PARAM4_VALUE0 && value < NUM_PARAM4_VALUES)
-        return param4_strings[value];
-      break;
-    default:
-      break;
+    switch (index) {
+      case PARAM4:
+        if (value >= PARAM4_VALUE0 && value < NUM_PARAM4_VALUES)
+          return param4_strings[value];
+        break;
+      default:
+        break;
     }
 
     return nullptr;
   }
 
   // life-cycle methods
-  void init(float *allocated_buffer) override final
-  {
+  void init(float * allocated_buffer) override final {
     buffer_ = allocated_buffer;
     params_.reset();
   }
@@ -149,21 +139,18 @@ public:
   void teardown() override final { buffer_ = nullptr; }
 
   // audio processing callbacks
-  void process(const float *__restrict in, float *__restrict out, uint32_t frames) override final
-  {
+  void process(const float * __restrict in, float * __restrict out, uint32_t frames) override final {
     // Caching current parameter values. Consider smoothing sensitive parameters in audio loop
     const Params p = params_;
 
-    for (const float *out_end = out + frames * 2; out != out_end; in += 2, out += 2)
-    {
+    for (const float * out_end = out + frames * 2; out != out_end; in += 2, out += 2) {
       // Process samples here
       out[0] = in[0];
       out[1] = in[1];
     }
   }
 
-  inline void touchEvent(uint8_t id, uint8_t phase, uint32_t x, uint32_t y) override final
-  {
+  inline void touchEvent(uint8_t id, uint8_t phase, uint32_t x, uint32_t y) override final {
     // Note: Touch x/y events are already mapped to specific parameters so there is usually there no need to set parameters from here.
     //       Audio source type effects, for instance, may require these events to trigger enveloppes and such.
 
@@ -188,7 +175,7 @@ public:
     // }
   }
 
-private:
-  float *buffer_; // valid range:  [buffer_, buffer_ + getBufferSize())
+ private:
+  float * buffer_;  // valid range:  [buffer_, buffer_ + getBufferSize())
   Params params_;
 };

@@ -76,14 +76,14 @@ DDEFS := -D$(MCU_MODEL) -DCORTEX_USE_FPU=TRUE -DARM_MATH_CM7 -D__FPU_PRESENT
 COPT := -fPIC -std=c11 -fno-exceptions
 CXXOPT := -fPIC -fno-use-cxa-atexit -std=c++11 -fno-rtti -fno-exceptions -fno-non-call-exceptions
 
-LDOPT := -shared --entry=0 -specs=nano.specs -specs=nosys.specs
+LDOPT := -shared --entry=0 -specs=nano.specs -specs=nosys.specs -Wl,--no-undefined -Wl,--exclude-libs,ALL
 
 CWARN := -W -Wall -Wextra
 CXXWARN :=
 
 FPU_OPTS := -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fsingle-precision-constant -fcheck-new
 
-OPT := -g -Os -mlittle-endian 
+OPT := -g -Os -mlittle-endian
 OPT += $(FPU_OPTS)
 
 ## TODO: there seems to be a bug or some yet unknown behavior that breaks PLT code for external calls when LTO is enabled alongside -nostartfiles
