@@ -133,6 +133,7 @@ class Effect : public Processor {
       case PARAM_CUTOFF:
         params_.cutoff_hz = (float)value;
         updateFilterCoefficients();
+        updateRoutingCoefficients();
         break;
 
       case PARAM_RESO:
@@ -142,6 +143,7 @@ class Effect : public Processor {
 
       case PARAM_TYPE:
         params_.type = std::max(0, std::min(1000, (int)value));
+        updateRoutingCoefficients();
         break;
 
       case PARAM_GAIN: {
@@ -238,6 +240,7 @@ class Effect : public Processor {
 
     params_.reset(sample_rate_reciprocal);
     updateFilterCoefficients();
+    updateRoutingCoefficients();
 
     flt_l.resetState();
     flt_r.resetState();
@@ -270,122 +273,50 @@ class Effect : public Processor {
   void process(const float * __restrict in, float * __restrict out, uint32_t frames) override final {
     const int32_t time_div_idx = params_.time_div % 9;
     const float time_division_mult = time_div_multipliers[time_div_idx];
-
+    const float gate_fraction = params_.gate / 100.f;
+    const float depth_mix_target = fabsf(params_.depth) / 100.f;
     const float smoothing_alpha = params_.smoothing_alpha;
-    const float depth_mix_target = std::abs(params_.depth) / 100.f;
     const float gain_coef = params_.gain_coef;
-    const int32_t type = params_.type;
-    const int32_t gate = params_.gate;
-
-    float morph_gain_low = 0.f;
-    float morph_gain_band = 0.f;
-    float morph_gain_high = 0.f;
-
-    if (type > 0 && type < 500) {
-      float mix_val = type / 500.f;
-      morph_gain_low = std::sqrt(1.f - mix_val);
-      morph_gain_band = std::sqrt(mix_val);
-    } else if (type > 500 && type < 1000) {
-      float mix_val = (type - 500.f) / 500.f;
-      morph_gain_band = std::sqrt(1.f - mix_val);
-      morph_gain_high = std::sqrt(mix_val);
-    }
-
-    float ap_mix = 1.f;
-    float raw_mix = 0.f;
-    if (params_.cutoff_hz >= 5000.f) {
-      ap_mix = 0.f;
-      raw_mix = 1.f;
-    } else if (params_.cutoff_hz > 2000.f) {
-      float t = (params_.cutoff_hz - 2000.f) / 3000.f;
-      raw_mix = t;
-      ap_mix = 1.f - t;
-    }
 
     for (const float * out_end = out + frames * 2; out != out_end; in += 2, out += 2) {
       const float in_l = in[0];
       const float in_r = in[1];
 
-      bool target_state = false;
+      // 1. Calculate Gate State
+      bool target_state = is_touching && isGateActive(time_division_mult, gate_fraction);
 
-      samples_since_last_tick++;
+      // 2. Target and Current Mix
+      float targetMix = target_state ? depth_mix_target : 0.f;
 
-      uint32_t tick_diff = 0;
-      float frac_diff = samples_since_last_tick / samples_per_tick;
-
-      if (params_.time_div >= 9) {
-        // Free Mode: Offset from touch start
-        tick_diff = current_tick_counter - touch_tick_counter;
-        frac_diff -= touch_fraction;
-      } else {
-        // Tempo-Synced Mode: Absolute position
-        tick_diff = current_tick_counter % 24;
-      }
-
-      float relative_pos = (float)tick_diff + frac_diff;
-      if (relative_pos < 0.f) relative_pos = 0.f;  // safeguard against float inaccuracy
-
-      float phase = relative_pos * time_division_mult;
-      phase = phase - (uint32_t)phase;
-
-      float gate_fraction = gate / 100.f;
-      bool is_active_phase = (params_.depth >= 0.f) ? (phase >= (1.0f - gate_fraction)) : (phase < gate_fraction);
-
-      target_state = is_touching && is_active_phase;
-
-      // 4. Target and Current Mix
-      float targetMixL = target_state ? depth_mix_target : 0.f;
-      currentMixL += smoothing_alpha * (targetMixL - currentMixL);
+      currentMixL += smoothing_alpha * (targetMix - currentMixL);
       if (currentMixL < 0.f) currentMixL = 0.f;
       if (currentMixL > 1.f) currentMixL = 1.f;
 
-      float targetMixR = target_state ? depth_mix_target : 0.f;
-      currentMixR += smoothing_alpha * (targetMixR - currentMixR);
+      currentMixR += smoothing_alpha * (targetMix - currentMixR);
       if (currentMixR < 0.f) currentMixR = 0.f;
       if (currentMixR > 1.f) currentMixR = 1.f;
 
-      // 5. Run filters
+      // 3. Run filters
       float lp_l, bp_l, hp_l, ap_l;
       float lp_r, bp_r, hp_r, ap_r;
 
       flt_l.tick_multimode(in_l, lp_l, bp_l, hp_l, ap_l);
       flt_r.tick_multimode(in_r, lp_r, bp_r, hp_r, ap_r);
 
-      // 6. Compute audible filter result
-      float audible_l = 0.f;
-      float audible_r = 0.f;
+      // 4. Compute audible filter result (with cubed gain applied)
+      float audible_l = computeAudibleFilter(lp_l, bp_l, hp_l) * gain_coef;
+      float audible_r = computeAudibleFilter(lp_r, bp_r, hp_r) * gain_coef;
 
-      if (type == 0) {
-        audible_l = lp_l;
-        audible_r = lp_r;
-      } else if (type < 500) {
-        audible_l = morph_gain_low * lp_l + morph_gain_band * bp_l;
-        audible_r = morph_gain_low * lp_r + morph_gain_band * bp_r;
-      } else if (type == 500) {
-        audible_l = bp_l;
-        audible_r = bp_r;
-      } else if (type < 1000) {
-        audible_l = morph_gain_band * bp_l + morph_gain_high * hp_l;
-        audible_r = morph_gain_band * bp_r + morph_gain_high * hp_r;
-      } else {
-        audible_l = hp_l;
-        audible_r = hp_r;
-      }
-
-      // Apply cubed gain to audible filter signal
-      audible_l *= gain_coef;
-      audible_r *= gain_coef;
-
-      // 7. Compute dry signal (mix of raw input and all-pass)
+      // 5. Compute dry signal (mix of raw input and all-pass)
       float dry_l = ap_mix * ap_l + raw_mix * in_l;
       float dry_r = ap_mix * ap_r + raw_mix * in_r;
 
-      // 8. Crossfade dry and wet (audible filter)
-      float gain_dry_l = std::sqrt(1.f - currentMixL);
-      float gain_wet_l = std::sqrt(currentMixL);
+      // 6. Crossfade dry and wet (audible filter)
+      float gain_dry_l = sqrtf(1.f - currentMixL);
+      float gain_wet_l = sqrtf(currentMixL);
 
-      float gain_dry_r = std::sqrt(1.f - currentMixR);
-      float gain_wet_r = std::sqrt(currentMixR);
+      float gain_dry_r = sqrtf(1.f - currentMixR);
+      float gain_wet_r = sqrtf(currentMixR);
 
       out[0] = gain_dry_l * dry_l + gain_wet_l * audible_l;
       out[1] = gain_dry_r * dry_r + gain_wet_r * audible_r;
@@ -424,6 +355,82 @@ class Effect : public Processor {
     flt_r.updateCoefficients(params_.cutoff_hz, params_.q, SvfLinearTrapOptimised2::LOW_PASS_FILTER, getSampleRate());
   }
 
+  void updateRoutingCoefficients() {
+    if (params_.type > 0 && params_.type < 500) {
+      float mix_val = params_.type / 500.f;
+      morph_gain_low = sqrtf(1.f - mix_val);
+      morph_gain_band = sqrtf(mix_val);
+      morph_gain_high = 0.f;
+    } else if (params_.type > 500 && params_.type < 1000) {
+      float mix_val = (params_.type - 500.f) / 500.f;
+      morph_gain_low = 0.f;
+      morph_gain_band = sqrtf(1.f - mix_val);
+      morph_gain_high = sqrtf(mix_val);
+    } else if (params_.type == 0) {
+      morph_gain_low = 1.f;
+      morph_gain_band = 0.f;
+      morph_gain_high = 0.f;
+    } else if (params_.type == 500) {
+      morph_gain_low = 0.f;
+      morph_gain_band = 1.f;
+      morph_gain_high = 0.f;
+    } else {
+      morph_gain_low = 0.f;
+      morph_gain_band = 0.f;
+      morph_gain_high = 1.f;
+    }
+
+    if (params_.cutoff_hz >= 5000.f) {
+      ap_mix = 0.f;
+      raw_mix = 1.f;
+    } else if (params_.cutoff_hz > 2000.f) {
+      float t = (params_.cutoff_hz - 2000.f) / 3000.f;
+      raw_mix = t;
+      ap_mix = 1.f - t;
+    } else {
+      ap_mix = 1.f;
+      raw_mix = 0.f;
+    }
+  }
+
+  inline bool isGateActive(float time_division_mult, float gate_fraction) {
+    samples_since_last_tick++;
+
+    uint32_t tick_diff = 0;
+    float frac_diff = samples_since_last_tick / samples_per_tick;
+
+    if (params_.time_div >= 9) {
+      // Free Mode: Offset from touch start
+      tick_diff = current_tick_counter - touch_tick_counter;
+      frac_diff -= touch_fraction;
+    } else {
+      // Tempo-Synced Mode: Absolute position
+      tick_diff = current_tick_counter % 24;
+    }
+
+    float relative_pos = (float)tick_diff + frac_diff;
+    if (relative_pos < 0.f) relative_pos = 0.f;  // safeguard against float inaccuracy
+
+    float phase = relative_pos * time_division_mult;
+    phase = phase - (uint32_t)phase;
+
+    return (params_.depth >= 0.f) ? (phase >= (1.0f - gate_fraction)) : (phase < gate_fraction);
+  }
+
+  inline float computeAudibleFilter(float lp, float bp, float hp) const {
+    if (params_.type == 0) {
+      return lp;
+    } else if (params_.type < 500) {
+      return morph_gain_low * lp + morph_gain_band * bp;
+    } else if (params_.type == 500) {
+      return bp;
+    } else if (params_.type < 1000) {
+      return morph_gain_band * bp + morph_gain_high * hp;
+    } else {
+      return hp;
+    }
+  }
+
   SvfLinearTrapOptimised2 flt_l;
   SvfLinearTrapOptimised2 flt_r;
 
@@ -440,6 +447,12 @@ class Effect : public Processor {
 
   float currentMixL;
   float currentMixR;
+
+  float morph_gain_low;
+  float morph_gain_band;
+  float morph_gain_high;
+  float ap_mix;
+  float raw_mix;
 
   Params params_;
 };
