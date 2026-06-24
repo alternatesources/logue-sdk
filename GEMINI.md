@@ -84,3 +84,15 @@ ______________________________________________________________________
 When developing or refactoring DSP algorithms for the Korg NTS-3:
 
 - **Single-Precision FPU**: The target processor ARM Cortex-M7 uses a hardware FPU configured for single precision (`-mfpu=fpv4-sp-d16`). Avoid `double` variables, literals, or double-precision math functions (`sin`, `cos`, `sqrt`, `pow`, etc.). Always use `float` types, single-precision literals (e.g., `1.0f`), and single-precision math functions (`sinf`, `cosf`, `sqrtf`, `powf`). Double-precision math functions will trigger slow software-emulated double-precision routines, leading to major performance issues on-device. Note that the `-fsingle-precision-constant` compiler option does NOT automatically promote `double` variables or double-precision functions to float.
+- **Dynamic Loader Constraints (No snprintf)**: The NTS-3 dynamic loader fails to resolve symbols like `snprintf` or floating-point printing (`_printf_float`). Avoid `<cstdio>` formatting functions in parameters. Use custom lightweight integer-to-string conversion utilities instead.
+- **Static Linking of Math Functions**: If helper functions like `powf`, `sqrtf`, or `tan` generate PLT dynamic relocations, the NTS-3 loader fails. Force all library dependencies to statically resolve by ensuring the `LDOPT` option in your project's `Makefile` includes `-Wl,--exclude-libs,ALL -Wl,--no-undefined`.
+
+______________________________________________________________________
+
+## 7. Documentation Style Guidelines
+
+When writing or updating project documentation, README files, or parameter descriptions, follow these tone and style guidelines:
+
+- **Prefer Technical Precision**: Describe what things do accurately and directly rather than trying to "sell" the feature. Focus on the factual mechanics, behavior, and parameters.
+- **Avoid Flowery or Promotional Language**: Tone down words that border on a sales pitch. Avoid elevating mundane details into marketing points.
+- **Keep it Objective**: Let the functionality speak for itself without adding subjective modifiers.
