@@ -2,20 +2,20 @@
 
 This document contains technical implementation details, project layout, and building/verification commands for developers working on the **filter gate** custom effect plugin.
 
-For user-facing instructions and parameter references, see \[README.md\](file:///Users/nate/repos/logue-sdk/platform/nts-3_kaoss/filter_gate/README.md).
-For high-level project guidelines, see the project-specific \[GEMINI.md\](file:///Users/nate/repos/logue-sdk/platform/nts-3_kaoss/filter_gate/GEMINI.md) or the root \[GEMINI.md\](file:///Users/nate/repos/logue-sdk/GEMINI.md).
+For user-facing instructions and parameter references, see [README.md](README.md).
+For high-level project guidelines, see the project-specific [GEMINI.md](GEMINI.md) or the root [GEMINI.md](../../../GEMINI.md).
 
 ______________________________________________________________________
 
 ## File Layout
 
-The source code for the filter gate custom effect is located in \[platform/nts-3_kaoss/filter_gate/\](file:///Users/nate/repos/logue-sdk/platform/nts-3_kaoss/filter_gate/):
+The source code for the filter gate custom effect is located in [platform/nts-3_kaoss/filter_gate/](./):
 
-- \[header.c\](file:///Users/nate/repos/logue-sdk/platform/nts-3_kaoss/filter_gate/header.c): Defines plugin metadata, parameters (display ranges, defaults, type descriptors), and default XY touch pad assignments.
-- \[effect.h\](file:///Users/nate/repos/logue-sdk/platform/nts-3_kaoss/filter_gate/effect.h): The core C++ `Effect` class containing parameters, crossfade envelope logic, and the DSP sample processing block (`process()`).
-- \[unit.cc\](file:///Users/nate/repos/logue-sdk/platform/nts-3_kaoss/filter_gate/unit.cc): Bridges the Korg C API endpoints (`unit_init`, `unit_render`, `unit_set_param_value`, `unit_touch_event`, etc.) to the `Effect` C++ instance.
-- \[third_party/SvfLinearTrapOptimised2.hpp\](file:///Users/nate/repos/logue-sdk/platform/nts-3_kaoss/filter_gate/third_party/SvfLinearTrapOptimised2.hpp): State Variable Filter implementation (used for LP/BP/HP morphing, and as matching all-pass filter blocks for the dry signal path).
-- \[Makefile\](file:///Users/nate/repos/logue-sdk/platform/nts-3_kaoss/filter_gate/Makefile) / \[config.mk\](file:///Users/nate/repos/logue-sdk/platform/nts-3_kaoss/filter_gate/config.mk): Project build definitions and flags.
+- [header.c](header.c): Defines plugin metadata, parameters (display ranges, defaults, type descriptors), and default XY touch pad assignments.
+- [effect.h](effect.h): The core C++ `Effect` class containing parameters, crossfade envelope logic, and the DSP sample processing block (`process()`).
+- [unit.cc](unit.cc): Bridges the Korg C API endpoints (`unit_init`, `unit_render`, `unit_set_param_value`, `unit_touch_event`, etc.) to the `Effect` C++ instance.
+- [third_party/SvfLinearTrapOptimised2.hpp](third_party/SvfLinearTrapOptimised2.hpp): State Variable Filter implementation (used for LP/BP/HP morphing, and as matching all-pass filter blocks for the dry signal path).
+- [Makefile](Makefile) / [config.mk](config.mk): Project build definitions and flags.
 
 ______________________________________________________________________
 
@@ -59,7 +59,7 @@ arm-none-eabi-readelf -r platform/nts-3_kaoss/filter_gate/build/filter_gate.elf
 
 The compiled, ready-to-load package is generated at:
 
-- \[filter_gate.nts3unit\](file:///Users/nate/repos/logue-sdk/platform/nts-3_kaoss/filter_gate/filter_gate.nts3unit)
+- [filter_gate.nts3unit](filter_gate.nts3unit)
 
 ______________________________________________________________________
 
@@ -72,6 +72,6 @@ To prevent phase cancellation issues when mixing the dry (unfiltered) and wet (f
 ### 2. Smoothing Parameter Type & Formula
 
 The `SMOOTH` parameter is configured as a millisecond parameter (`k_unit_param_type_msec`), represented on-screen from `0.0` to `50.0 ms`.
-The smoothing coefficient $\alpha$ (alpha) is computed using:
-$$\alpha = 1 - e^{-T / \tau}$$
-Where $T$ is the sampling interval ($1 / 48000$ s) and $\tau$ is the time constant in seconds (`fade_time_ms / 1000.0f`).
+The smoothing coefficient $\\alpha$ (alpha) is computed using:
+$$\\alpha = 1 - e^{-T / \\tau}$$
+Where $T$ is the sampling interval ($1 / 48000$ s) and $\\tau$ is the time constant in seconds (`fade_time_ms / 1000.0f`).
