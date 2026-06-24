@@ -38,6 +38,36 @@ The Filter Gate plugin exposes 8 adjustable parameters:
 
 ---
 
+## Suggested Parameter Configurations
+
+### Morphing Filter Gate
+
+Leave the default X/Y axis assignments intact, unmap `DEPTH`, and map `TYPE` to the FX DEPTH slider to morph between filter shapes during performance.
+
+- **X-Axis:** Filter Cutoff Frequency (`CUTOFF`)
+- **Y-Axis:** Filter Resonance (`RESO` / Q-Factor)
+- **FX DEPTH:** Filter Type Morph (`TYPE` - morphs from Low-Pass to Band-Pass to High-Pass)
+
+### Trance Filter
+
+Sweep the gate speed and cutoff frequency dynamically to create evolving rhythmic sweeps.
+
+- **X-Axis:** Time Division (`TIME`) — Use the default range (tempo-aligned divisions `0` to `8`) or set `MIN` to `9` and `MAX` to `17` (or a subrange) for tempo-based, touch-retriggered divisions.
+- **Y-Axis:** Filter Cutoff Frequency (`CUTOFF`)
+- **FX DEPTH:** Filter Resonance (`RESO` / Q-Factor)
+
+### Trance Gate
+
+Unmap `CUTOFF` and `RESO` (leaving them at their default values: cutoff fully open, resonance flat) to bypass the filter and use the plugin as a traditional amplitude gate.
+
+- **X-Axis:** Time Division (`TIME`) — Control gate speed using grid-aligned or touch-retriggered divisions.
+- **Y-Axis:** Wet Signal Gain (`GAIN`) — Controls the active gate volume level.
+- **FX DEPTH:** Crossfade Smoothing Time (`SMOOTH`) — Softens the transitions to create a sidechain-like pumping effect.
+
+
+
+---
+
 ## Detailed Parameter Guide
 
 ### 1. TIME (Time Division)
