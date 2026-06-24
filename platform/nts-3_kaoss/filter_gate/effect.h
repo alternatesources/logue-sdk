@@ -33,8 +33,8 @@
 //*/
 
 /*
- *  filter gate - Trance-Gate like filter effect with equal-power LP/BP/HP morphing,
- *  and log-scaled cutoff frequency.
+ *  filter gate - Trance-Gate like filter effect with equal-power LP/BP/HP
+ *  morphing.
  *
  */
 #include "processor.h"
@@ -95,7 +95,7 @@ class Effect : public Processor {
   };
 
   struct Params {
-    int32_t time_div;       // 0-9
+    int32_t time_div;       // 0-17
     int32_t gate;           // 0-100
     float cutoff_hz;        // 20Hz - 20kHz
     float q;                // 0.50 - 300.00
@@ -152,7 +152,8 @@ class Effect : public Processor {
       } break;
 
       case PARAM_SMOOTH: {
-        float fade_time_ms = std::max(0, std::min(500, (int)value)) / 10.f;  // value 0-500 represents 0.0-50.0 ms
+        // value 0-500 represents 0.0-50.0 ms
+        float fade_time_ms = std::max(0, std::min(500, (int)value)) / 10.f;
         params_.smoothing_alpha = calculate_alpha(fade_time_ms, sample_rate_reciprocal);
       } break;
 
@@ -166,56 +167,47 @@ class Effect : public Processor {
   }
 
   inline const char * getParameterStrValue(uint8_t index, int32_t value) const override final {
-    switch (index) {
-      case PARAM_TIME:
-        switch (value) {
-          case 0:
-            return "1/2";
-          case 1:
-            return "1/4d";
-          case 2:
-            return "1/4";
-          case 3:
-            return "1/8d";
-          case 4:
-            return "1/8";
-          case 5:
-            return "1/16d";
-          case 6:
-            return "1/16";
-          case 7:
-            return "1/32d";
-          case 8:
-            return "1/32";
-          case 9:
-            return "1/2free";
-          case 10:
-            return "1/4dfree";
-          case 11:
-            return "1/4free";
-          case 12:
-            return "1/8dfree";
-          case 13:
-            return "1/8free";
-          case 14:
-            return "1/16dfree";
-          case 15:
-            return "1/16free";
-          case 16:
-            return "1/32dfree";
-          case 17:
-            return "1/32free";
-          default:
-            break;
-        }
-        break;
-
-      case PARAM_GATE:
-        // k_unit_param_type_percent is handled by the OS
-        return nullptr;
-
-      default:
-        break;
+    if (index == PARAM_TIME) {
+      switch (value) {
+        case 0:
+          return "1/2";
+        case 1:
+          return "1/4d";
+        case 2:
+          return "1/4";
+        case 3:
+          return "1/8d";
+        case 4:
+          return "1/8";
+        case 5:
+          return "1/16d";
+        case 6:
+          return "1/16";
+        case 7:
+          return "1/32d";
+        case 8:
+          return "1/32";
+        case 9:
+          return "1/2free";
+        case 10:
+          return "1/4dfree";
+        case 11:
+          return "1/4free";
+        case 12:
+          return "1/8dfree";
+        case 13:
+          return "1/8free";
+        case 14:
+          return "1/16dfree";
+        case 15:
+          return "1/16free";
+        case 16:
+          return "1/32dfree";
+        case 17:
+          return "1/32free";
+        default:
+          break;
+      }
     }
 
     return nullptr;
@@ -355,6 +347,13 @@ class Effect : public Processor {
     flt_r.updateCoefficients(params_.cutoff_hz, params_.q, SvfLinearTrapOptimised2::LOW_PASS_FILTER, getSampleRate());
   }
 
+  /**
+   * @brief Updates the internal mixing coefficients for the active filter type and routing.
+   *
+   * Calculates the crossfade values (morph_gain_low, morph_gain_band, morph_gain_high)
+   * between lowpass, bandpass, and highpass based on the current `type` parameter.
+   * Also updates the raw and allpass mix coefficients based on the cutoff frequency.
+   */
   void updateRoutingCoefficients() {
     if (params_.type > 0 && params_.type < 500) {
       float mix_val = params_.type / 500.f;
@@ -393,6 +392,17 @@ class Effect : public Processor {
     }
   }
 
+  /**
+   * @brief Determines whether the gate should be open or closed for the current sample.
+   *
+   * Calculates the current phase within the rhythmic time division cycle. In tempo-synced
+   * modes, this is based on absolute transport position. In free modes, it's relative
+   * to the time the user touched the pad.
+   *
+   * @param time_division_mult Multiplier for the current time division.
+   * @param gate_fraction The active portion of the cycle (duty cycle).
+   * @return true if the gate is active (open) for this sample.
+   */
   inline bool isGateActive(float time_division_mult, float gate_fraction) {
     samples_since_last_tick++;
 
@@ -417,6 +427,17 @@ class Effect : public Processor {
     return (params_.depth >= 0.f) ? (phase >= (1.0f - gate_fraction)) : (phase < gate_fraction);
   }
 
+  /**
+   * @brief Computes the mixed output of the state variable filter.
+   *
+   * Blends the outputs of the underlying lowpass, bandpass, and highpass filter
+   * states using the morphing coefficients calculated in `updateRoutingCoefficients`.
+   *
+   * @param lp The current lowpass filter output.
+   * @param bp The current bandpass filter output.
+   * @param hp The current highpass filter output.
+   * @return The resulting mixed filter output.
+   */
   inline float computeAudibleFilter(float lp, float bp, float hp) const {
     if (params_.type == 0) {
       return lp;
