@@ -102,7 +102,6 @@ Sets the filter's cutoff frequency, mapped exponentially:
 
 - `20` → 20 Hz
 - `20000` → 20.0 kHz (Default)
-- **Screen Display:** Handled automatically by the hardware using the standard Hz/kHz parameter format.
 
 ### 3. RESO (Filter Resonance / Q-Factor)
 
