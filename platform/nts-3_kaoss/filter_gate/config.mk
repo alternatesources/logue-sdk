@@ -2,7 +2,7 @@
 # Configuration for Makefile
 #
 
-PROJECT := dummy_genericfx
+PROJECT := filter_gate
 PROJECT_TYPE := genericfx
 
 ##############################################################################
